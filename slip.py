@@ -43,22 +43,35 @@ class Enlace:
     def __init__(self, linha_serial):
         self.linha_serial = linha_serial
         self.linha_serial.registrar_recebedor(self.__raw_recv)
+        self.buffer = b''
 
     def registrar_recebedor(self, callback):
         self.callback = callback
+    
+    def enviar(self, datagrama: bytes):
+        tratado = datagrama.replace(b'\xdb', b'\xdb\xdd').replace(b'\xc0', b'\xdb\xdc')
+        self.linha_serial.enviar(b'\xc0' + tratado + b'\xc0')
+        
 
-    def enviar(self, datagrama):
-        # TODO: Preencha aqui com o código para enviar o datagrama pela linha
-        # serial, fazendo corretamente a delimitação de quadros e o escape de
-        # sequências especiais, de acordo com o protocolo CamadaEnlace (RFC 1055).
-        pass
+    def __raw_recv(self, dados: bytes):
+        
+        if b'\xc0' in dados:
+            splitted = dados.split(b'\xc0')
+            for idx in range(len(splitted)):
+                self.buffer += splitted[idx]
 
-    def __raw_recv(self, dados):
-        # TODO: Preencha aqui com o código para receber dados da linha serial.
-        # Trate corretamente as sequências de escape. Quando ler um quadro
-        # completo, repasse o datagrama contido nesse quadro para a camada
-        # superior chamando self.callback. Cuidado pois o argumento dados pode
-        # vir quebrado de várias formas diferentes - por exemplo, podem vir
-        # apenas pedaços de um quadro, ou um pedaço de quadro seguido de um
-        # pedaço de outro, ou vários quadros de uma vez só.
-        pass
+                if len(self.buffer) > 0 and idx + 1 != len(splitted):
+                    tratado = self.buffer.replace(b'\xdb\xdc', b'\xc0').replace(b'\xdb\xdd', b'\xdb')
+                    try:
+                        self.callback(tratado)
+                    except:
+                        import traceback
+                        traceback.print_exc()
+                    finally:
+                        self.buffer = b''
+
+                    self.buffer = b''      
+
+        else:
+            self.buffer += dados
+
